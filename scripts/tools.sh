@@ -20,7 +20,7 @@ common=(--rm -u "$(id -u):$(id -g)" -v "$ROOT:/repo" -w "/repo$REL")
 
 case "$tool" in
   terraform)
-    exec docker run "${common[@]}" -e HOME=/repo/.tools -e TF_PLUGIN_CACHE_DIR=/repo/.tools/plugin-cache \
+    exec docker run -i "${common[@]}" -e HOME=/repo/.tools -e TF_PLUGIN_CACHE_DIR=/repo/.tools/plugin-cache \
       -e TF_IN_AUTOMATION=1 "$TF_IMAGE" "$@" ;;
   tflint)
     exec docker run "${common[@]}" -e HOME=/repo/.tools -e TFLINT_PLUGIN_DIR=/repo/.tools/tflint \

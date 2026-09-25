@@ -4,17 +4,17 @@ SHELL := /usr/bin/env bash
 TOOLS := scripts/tools.sh
 ENV ?= dev
 
-TF_DIRS := bootstrap $(wildcard modules/*) $(wildcard envs/*)
+TF_DIRS := bootstrap $(wildcard modules/*) $(wildcard envs/*) tests/render
 CHART_DIRS := $(wildcard k8s/charts/*)
 
-.PHONY: check fmt fmt-check validate lint scan helm-check help \
+.PHONY: check fmt fmt-check validate lint scan helm-check render-test help \
         bootstrap plan apply destroy deploy rollback cost \
         k8s-up k8s-deploy k8s-down
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
-check: fmt-check validate lint scan helm-check ## All offline checks (no AWS access needed)
+check: fmt-check validate lint scan render-test helm-check ## All offline checks (no AWS access needed)
 	@echo "✔ all offline checks passed"
 
 fmt: ## Format all Terraform
@@ -37,6 +37,9 @@ lint: ## tflint (recommended preset + AWS ruleset)
 scan: ## checkov IaC security scan (findings we accept are skipped inline with a reason)
 	$(TOOLS) checkov -d . --framework terraform github_actions kubernetes --quiet --compact \
 	  --skip-path .tools --skip-path .terraform
+
+render-test: ## Render host templates; shellcheck, compose config, nginx -t
+	scripts/test-render.sh
 
 helm-check: ## helm lint + render + kubeconform schema validation
 	@set -e; for c in $(CHART_DIRS); do \
