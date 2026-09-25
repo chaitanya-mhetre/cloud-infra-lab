@@ -32,7 +32,7 @@ variable "rate_limit_per_5min" {
 }
 
 variable "managed_rule_groups" {
-  description = "AWS managed rule groups, evaluated in list order after the rate rule. count_rules = rules inside the group downgraded to count (false positives)."
+  description = "AWS managed rule groups, evaluated in list order after the rate rule and the always-on KnownBadInputs group. count_rules = rules inside a group downgraded to count (false positives)."
   type = list(object({
     name        = string
     count_rules = optional(list(string), [])
@@ -42,9 +42,13 @@ variable "managed_rule_groups" {
     # SizeRestrictions_BODY blocks bodies > 8 KB; file uploads go straight to S3 via presigned URLs,
     # but webhook payloads and JSON bookings can exceed it, so it only counts.
     { name = "AWSManagedRulesCommonRuleSet", count_rules = ["SizeRestrictions_BODY"] },
-    { name = "AWSManagedRulesKnownBadInputsRuleSet" },
     { name = "AWSManagedRulesSQLiRuleSet" },
   ]
+
+  validation {
+    condition     = !contains([for g in var.managed_rule_groups : g.name], "AWSManagedRulesKnownBadInputsRuleSet")
+    error_message = "AWSManagedRulesKnownBadInputsRuleSet is always on (fixed rule); don't list it here."
+  }
 }
 
 variable "log_retention_days" {

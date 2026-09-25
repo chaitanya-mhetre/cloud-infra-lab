@@ -26,8 +26,13 @@ run "count_mode_is_the_default" {
   }
 
   assert {
-    condition     = alltrue([for r in aws_wafv2_web_acl.this.rule : length(try(r.override_action[0].count, [])) == 1 if r.name != "rate-limit-per-ip"])
-    error_message = "in count mode every managed group must be overridden to count"
+    condition     = alltrue([for r in aws_wafv2_web_acl.this.rule : length(try(r.override_action[0].count, [])) == 1 if !contains(["rate-limit-per-ip", "AWSManagedRulesKnownBadInputsRuleSet"], r.name)])
+    error_message = "in count mode every configurable managed group must be overridden to count"
+  }
+
+  assert {
+    condition     = alltrue([for r in aws_wafv2_web_acl.this.rule : length(r.override_action[0].none) == 1 if r.name == "AWSManagedRulesKnownBadInputsRuleSet"])
+    error_message = "KnownBadInputs (Log4Shell) must block even in count mode"
   }
 }
 
@@ -92,14 +97,27 @@ run "logs_are_named_and_redacted" {
   }
 }
 
-run "log4shell_group_cannot_be_removed" {
-  command = plan
+run "log4shell_group_stays_on_with_a_custom_list" {
+  command = apply
 
   variables {
     managed_rule_groups = [{ name = "AWSManagedRulesCommonRuleSet" }]
   }
 
-  expect_failures = [aws_wafv2_web_acl.this]
+  assert {
+    condition     = contains([for r in aws_wafv2_web_acl.this.rule : r.name], "AWSManagedRulesKnownBadInputsRuleSet")
+    error_message = "KnownBadInputs (Log4Shell) must stay on even when the list is overridden"
+  }
+}
+
+run "known_bad_inputs_cannot_be_listed_twice" {
+  command = plan
+
+  variables {
+    managed_rule_groups = [{ name = "AWSManagedRulesKnownBadInputsRuleSet" }]
+  }
+
+  expect_failures = [var.managed_rule_groups]
 }
 
 run "rejects_bad_mode" {

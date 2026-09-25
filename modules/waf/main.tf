@@ -2,13 +2,14 @@
 #
 # Rule order (lower priority number = evaluated first):
 #   0  per-IP rate limit        cheap, stops floods before the managed rules are billed per request
-#   10 IP reputation list       known botnets / scanners
-#   20 common rule set (CRS)    OWASP-style XSS, LFI, bad user agents, oversize bodies
-#   30 known bad inputs         Log4Shell, Java deserialisation, localhost Host headers
-#   40 SQL injection            SQLi patterns in query, body, cookies
+#   5  known bad inputs         Log4Shell, Java deserialisation, localhost Host headers. A fixed rule,
+#                               not part of the configurable list, so it can't be removed by accident.
+#   10 IP reputation list       known botnets / scanners               ┐
+#   20 common rule set (CRS)    XSS, LFI, bad user agents, big bodies  ├ var.managed_rule_groups
+#   30 SQL injection            SQLi patterns in query, body, cookies  ┘
 #
-# `mode = "count"` makes every rule count instead of block. Roll out in count mode, read the logs for
-# false positives, then switch to "block". The same switch covers the rate rule and the managed groups.
+# `mode = "count"` makes the rate rule and the configurable groups count instead of block. Roll out in
+# count mode, read the logs for false positives, then switch to "block". KnownBadInputs always blocks.
 
 locals {
   block = var.mode == "block"
@@ -57,6 +58,31 @@ resource "aws_wafv2_web_acl" "this" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.name}-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Always on: Log4Shell (CVE-2021-44228) and other known-bad payloads.
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 5
+
+    # Blocks even in count mode: these signatures (Log4Shell JNDI lookups, Java deserialisation gadgets)
+    # have essentially no legitimate traffic, so a count-first rollout buys nothing.
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.name}-known-bad-inputs"
       sampled_requests_enabled   = true
     }
   }
@@ -111,13 +137,6 @@ resource "aws_wafv2_web_acl" "this" {
     cloudwatch_metrics_enabled = true
     metric_name                = "${var.name}-alb"
     sampled_requests_enabled   = true
-  }
-
-  lifecycle {
-    precondition {
-      condition     = contains([for g in var.managed_rule_groups : g.name], "AWSManagedRulesKnownBadInputsRuleSet")
-      error_message = "Keep AWSManagedRulesKnownBadInputsRuleSet: it is the Log4Shell (CVE-2021-44228) protection."
-    }
   }
 }
 
