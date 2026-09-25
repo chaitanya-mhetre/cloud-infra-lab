@@ -1,0 +1,21 @@
+# Local cluster for the Kubernetes track: `make k8s-up`.
+# Single node keeps RAM low on a laptop; add worker nodes to practise scheduling/PDBs.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: cil-lab
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # ingress-nginx on host ports 58080/58443 (80/443 are often taken)
+      - containerPort: 80
+        hostPort: 58080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 58443
+        protocol: TCP

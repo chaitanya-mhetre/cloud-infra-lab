@@ -1,0 +1,101 @@
+# Throwaway Postgres (pgvector) + Redis for the kind cluster. NOT for real use:
+# no persistence, dev passwords, single replica. On AWS these are RDS + ElastiCache.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deps
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-init
+  namespace: deps
+data:
+  10-init.sql: |
+    -- rag-engine database
+    CREATE ROLE rag LOGIN PASSWORD 'rag';
+    CREATE DATABASE rag OWNER rag;
+    -- slotwise: owner + least-privilege roles (same model as modules/compute-ec2/files/db-roles.sh)
+    CREATE ROLE slotwise LOGIN PASSWORD 'slotwise';
+    CREATE DATABASE slotwise OWNER slotwise;
+    CREATE ROLE slotwise_app LOGIN PASSWORD 'slotwise_app' NOBYPASSRLS;
+    CREATE ROLE slotwise_worker LOGIN PASSWORD 'slotwise_worker' BYPASSRLS;
+    \c rag
+    CREATE EXTENSION IF NOT EXISTS vector;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: deps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - { name: POSTGRES_PASSWORD, value: postgres }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }
+          volumeMounts:
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+      volumes:
+        - name: init
+          configMap: { name: pg-init }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: deps
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: deps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: deps
+spec:
+  selector: { app: redis }
+  ports:
+    - port: 6379

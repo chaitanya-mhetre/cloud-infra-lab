@@ -1,0 +1,22 @@
+# kind overrides: image loaded with `kind load`, one replica each, deps from k8s/dev-deps.
+image:
+  repository: rag-engine
+  pullPolicy: Never
+api:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 50
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+worker:
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+secrets:
+  values:
+    RAG_DATABASE_URL: postgresql+asyncpg://rag:rag@postgres.deps.svc.cluster.local:5432/rag
+    RAG_REDIS_URL: redis://redis.deps.svc.cluster.local:6379/0
+    RAG_JWT_SECRET: kind-only-not-a-secret-kind-only-not-a-secret

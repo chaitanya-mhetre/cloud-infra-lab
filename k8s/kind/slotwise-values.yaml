@@ -1,0 +1,24 @@
+image:
+  repository: slotwise
+  pullPolicy: Never
+api:
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 4
+workers:
+  worker:
+    autoscaling:
+      enabled: false
+    replicas: 1
+secrets:
+  values:
+    SLOTWISE_DATABASE_URL: postgresql+asyncpg://slotwise_app:slotwise_app@postgres.deps.svc.cluster.local:5432/slotwise
+    SLOTWISE_MIGRATION_DATABASE_URL: postgresql+asyncpg://slotwise:slotwise@postgres.deps.svc.cluster.local:5432/slotwise
+    SLOTWISE_WORKER_DATABASE_URL: postgresql+asyncpg://slotwise_worker:slotwise_worker@postgres.deps.svc.cluster.local:5432/slotwise
+    SLOTWISE_REDIS_URL: redis://redis.deps.svc.cluster.local:6379/0
+    SLOTWISE_CELERY_BROKER_URL: redis://redis.deps.svc.cluster.local:6379/1
+    SLOTWISE_JWT_SECRET: kind-only-not-a-secret-kind-only-not-a-secret
+    SLOTWISE_FERNET_KEY: ZmRlY2UwYzQ1YTFhNDc5ZThhN2M4YjM1ZDA3YWUyZjE=
+    SLOTWISE_MOCKPAY_WEBHOOK_SECRET: kind-only
+    AWS_ACCESS_KEY_ID: dev-access-key
+    AWS_SECRET_ACCESS_KEY: dev-secret-key

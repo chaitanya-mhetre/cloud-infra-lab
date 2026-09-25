@@ -42,18 +42,25 @@ lint: ## tflint (recommended preset + AWS ruleset)
 	$(TOOLS) tflint --recursive --config=/repo/.tflint.hcl
 
 scan: ## checkov IaC security scan (findings we accept are skipped inline with a reason)
-	$(TOOLS) checkov -d . --framework terraform github_actions kubernetes --quiet --compact \
-	  --skip-path .tools --skip-path .terraform
+	$(TOOLS) checkov -d . --framework terraform github_actions --quiet --compact \
+	  --skip-path .tools --skip-path .terraform --skip-path k8s
 
 render-test: ## Render host templates; shellcheck, compose config, nginx -t
 	scripts/test-render.sh
 
-helm-check: ## helm lint + render + kubeconform schema validation
-	@set -e; for c in $(CHART_DIRS); do \
-	  echo "== helm $$c"; \
-	  $(TOOLS) helm lint $$c --strict; \
-	  $(TOOLS) helm template ci $$c | $(TOOLS) kubeconform -strict -summary -ignore-missing-schemas -; \
+helm-check: ## helm lint + render + kubeconform + checkov on rendered manifests
+	@set -e; mkdir -p .tools/rendered; for c in $(CHART_DIRS); do \
+	  n=$$(basename $$c); echo "== helm $$c"; \
+	  $(TOOLS) helm lint $$c --strict -f $$c/ci/ci-values.yaml; \
+	  $(TOOLS) helm template ci $$c -n ci -f $$c/ci/ci-values.yaml > .tools/rendered/$$n.yaml; \
+	  $(TOOLS) kubeconform -strict -summary -ignore-missing-schemas - < .tools/rendered/$$n.yaml; \
 	done
+	@# Accepted k8s findings (reasons in docs/security.md#kubernetes):
+	@#   K8S_15/43 immutable git-SHA tags instead of Always/digest pinning; K8S_35 apps read config from env;
+	@#   K8S_11 no CPU limits on purpose (CFS throttling); K8S_9 workers serve no traffic (no readiness);
+	@#   K8S_8 celery beat has no health endpoint (singleton, restarts on exit).
+	$(TOOLS) checkov -d .tools/rendered --framework kubernetes --quiet --compact \
+	  --skip-check CKV_K8S_15,CKV_K8S_43,CKV_K8S_35,CKV_K8S_11,CKV_K8S_9,CKV_K8S_8
 
 # ---------------------------------------------------------------------------
 # Targets below touch real AWS. Read docs/runbook.md first.
