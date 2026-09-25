@@ -44,6 +44,8 @@ lint: ## tflint (recommended preset + AWS ruleset)
 scan: ## checkov IaC security scan (findings we accept are skipped inline with a reason)
 	$(TOOLS) checkov -d . --framework terraform github_actions --quiet --compact \
 	  --skip-path .tools --skip-path .terraform --skip-path k8s
+	docker run --rm -v "$(CURDIR):/repo" -w /repo rhysd/actionlint:1.7.3
+	docker run --rm -v "$(CURDIR)/ci-templates:/w" -w /w rhysd/actionlint:1.7.3 app-deploy.yml
 
 render-test: ## Render host templates; shellcheck, compose config, nginx -t
 	scripts/test-render.sh
