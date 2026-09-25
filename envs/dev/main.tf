@@ -96,3 +96,11 @@ module "host" {
   acme_email            = var.acme_email
   log_retention_days    = 3
 }
+
+module "observability" {
+  source = "../../modules/observability"
+
+  name            = local.name
+  alarm_email     = var.alarm_email
+  ec2_instance_id = module.host.instance_id
+}

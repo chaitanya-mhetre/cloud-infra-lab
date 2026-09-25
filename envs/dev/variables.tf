@@ -51,3 +51,9 @@ variable "github_owner" {
   type        = string
   default     = "CHANGE-ME"
 }
+
+variable "alarm_email" {
+  description = "Alarm notification email (empty = no subscription)."
+  type        = string
+  default     = ""
+}

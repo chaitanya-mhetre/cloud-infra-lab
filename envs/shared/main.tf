@@ -28,3 +28,33 @@ module "github_plan" {
   state_bucket_arn        = local.state_bucket_arn
   lock_table_arn          = local.lock_table_arn
 }
+
+# Cost guard for the whole account: email at 50% and 80% of actual spend, and when the
+# month is FORECAST to exceed the budget (earliest warning).
+resource "aws_budgets_budget" "monthly" {
+  count        = var.budget_email == "" ? 0 : 1
+  name         = "${var.project}-monthly"
+  budget_type  = "COST"
+  limit_amount = tostring(var.monthly_budget_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  dynamic "notification" {
+    for_each = [50, 80]
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = notification.value
+      threshold_type             = "PERCENTAGE"
+      notification_type          = "ACTUAL"
+      subscriber_email_addresses = [var.budget_email]
+    }
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.budget_email]
+  }
+}

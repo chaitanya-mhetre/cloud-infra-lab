@@ -139,3 +139,16 @@ module "ecs" {
   worker             = var.worker
   log_retention_days = var.log_retention_days
 }
+
+module "observability" {
+  source = "../observability"
+
+  name                    = local.name
+  alarm_email             = var.alarm_email
+  alb_arn_suffix          = module.loadbalancer.alb_arn_suffix
+  target_group_arn_suffix = module.loadbalancer.target_group_arn_suffix
+  ecs_cluster             = module.ecs.cluster_name
+  rds_instance_id         = module.database.instance_id
+  redis_group_id          = module.cache.replication_group_id
+  app_log_group_name      = module.ecs.log_group_name
+}

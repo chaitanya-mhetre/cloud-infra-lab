@@ -88,6 +88,12 @@ variable "log_retention_days" {
   default     = 14
 }
 
+variable "alarm_email" {
+  description = "Email subscribed to alarms (confirm the SNS subscription email)."
+  type        = string
+  default     = ""
+}
+
 variable "disposable" {
   description = "True = teardown-friendly (force_destroy buckets, no final snapshot)."
   type        = bool

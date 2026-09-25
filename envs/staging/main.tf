@@ -9,6 +9,7 @@ module "stack" {
   domain_name     = var.domain_name
   route53_zone_id = var.route53_zone_id
   github_owner    = var.github_owner
+  alarm_email     = var.alarm_email
   disposable      = true
 
   db = {

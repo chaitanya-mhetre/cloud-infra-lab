@@ -38,3 +38,9 @@ variable "route53_zone_id" {
   type        = string
   default     = ""
 }
+
+variable "alarm_email" {
+  description = "Alarm notification email."
+  type        = string
+  default     = ""
+}

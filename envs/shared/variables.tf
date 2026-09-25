@@ -21,3 +21,15 @@ variable "github_owner" {
   type        = string
   default     = "CHANGE-ME"
 }
+
+variable "monthly_budget_usd" {
+  description = "Monthly spend ceiling for alerts (USD)."
+  type        = number
+  default     = 20
+}
+
+variable "budget_email" {
+  description = "Where budget alerts go (empty = no budget created)."
+  type        = string
+  default     = ""
+}
