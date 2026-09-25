@@ -1,0 +1,44 @@
+name: nightly-destroy-dev
+
+# Cost guard: dev is disposable. Tear it down every night (21:30 IST = 16:00 UTC)
+# unless the repo variable KEEP_DEV=true is set for a multi-day demo.
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-apply-dev
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    if: vars.AWS_APPLY_ROLE_ARN != '' && vars.KEEP_DEV != 'true'
+    runs-on: ubuntu-latest
+    environment: infra-dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      - name: write backend config
+        working-directory: envs/dev
+        run: |
+          cat > backend.hcl <<HCL
+          bucket         = "${{ vars.TF_STATE_BUCKET }}"
+          dynamodb_table = "${{ vars.TF_LOCK_TABLE }}"
+          region         = "${{ vars.AWS_REGION || 'ap-south-1' }}"
+          HCL
+      - name: destroy + leftover check
+        run: CI=true scripts/teardown.sh dev

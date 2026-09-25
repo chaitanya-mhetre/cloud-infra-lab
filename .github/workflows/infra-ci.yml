@@ -1,0 +1,146 @@
+name: infra-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "1"
+
+jobs:
+  static:
+    name: fmt · validate · tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform fmt
+        run: terraform fmt -recursive -check -diff
+      - name: terraform validate (every stack and module)
+        run: |
+          set -e
+          for d in bootstrap modules/* envs/* tests/render; do
+            echo "::group::$d"
+            (cd "$d" && terraform init -backend=false -input=false >/dev/null && terraform validate -no-color)
+            echo "::endgroup::"
+          done
+      - uses: terraform-linters/setup-tflint@v4
+      - name: tflint
+        run: |
+          tflint --init --config="$PWD/.tflint.hcl"
+          tflint --recursive --config="$PWD/.tflint.hcl"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  security:
+    name: checkov · gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,github_actions,kubernetes
+          quiet: true
+          compact: true
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  render:
+    name: host templates · helm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: render + shellcheck + compose config + nginx -t
+        run: scripts/test-render.sh
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: helm lint + kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          for c in k8s/charts/*; do
+            helm lint "$c" --strict
+            helm template ci "$c" | ./kubeconform -strict -summary -ignore-missing-schemas -
+          done
+
+  plan:
+    name: plan (${{ matrix.env }})
+    # Only on PRs, and only once the AWS account is wired up (repo variable set).
+    if: github.event_name == 'pull_request' && vars.AWS_PLAN_ROLE_ARN != ''
+    needs: [static, security]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write      # mint the OIDC token for AWS
+      pull-requests: write # post the plan as a PR comment
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, staging]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      - name: terraform plan
+        id: plan
+        working-directory: envs/${{ matrix.env }}
+        run: |
+          cat > backend.hcl <<HCL
+          bucket         = "${{ vars.TF_STATE_BUCKET }}"
+          dynamodb_table = "${{ vars.TF_LOCK_TABLE }}"
+          region         = "${{ vars.AWS_REGION || 'ap-south-1' }}"
+          HCL
+          terraform init -backend-config=backend.hcl -input=false
+          set +e
+          terraform plan -input=false -no-color -lock-timeout=120s -detailed-exitcode -out=tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -ne 1 ] || { cat plan.txt; exit 1; }
+      - name: comment plan on PR
+        uses: actions/github-script@v7
+        env:
+          ENV_NAME: ${{ matrix.env }}
+        with:
+          script: |
+            const fs = require('fs');
+            const env = process.env.ENV_NAME;
+            let plan = fs.readFileSync(`envs/${env}/plan.txt`, 'utf8');
+            const destroys = (plan.match(/will be destroyed|must be replaced/g) || []).length;
+            if (plan.length > 60000) plan = plan.slice(-60000);
+            const warn = destroys ? `\n> ⚠️ ${destroys} resource(s) destroyed or replaced. Needs the \`allow-destroy\` label.\n` : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+              body: `### terraform plan: \`${env}\`${warn}\n<details><summary>show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`,
+            });
+      - name: block unlabelled destroys
+        working-directory: envs/${{ matrix.env }}
+        run: |
+          if grep -qE "will be destroyed|must be replaced" plan.txt && \
+             ! ${{ contains(github.event.pull_request.labels.*.name, 'allow-destroy') }}; then
+            echo "::error::Plan destroys/replaces resources. Add the 'allow-destroy' label after review."
+            exit 1
+          fi

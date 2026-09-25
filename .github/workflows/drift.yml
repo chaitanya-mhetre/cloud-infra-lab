@@ -1,0 +1,66 @@
+name: drift-detection
+
+# Someone clicked in the console? This finds out. `plan -detailed-exitcode` returns 2
+# when real infrastructure differs from the code; we open (or update) an issue.
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 08:30 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    if: vars.AWS_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [shared, staging]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      - name: plan
+        id: plan
+        working-directory: envs/${{ matrix.env }}
+        run: |
+          cat > backend.hcl <<HCL
+          bucket         = "${{ vars.TF_STATE_BUCKET }}"
+          dynamodb_table = "${{ vars.TF_LOCK_TABLE }}"
+          region         = "${{ vars.AWS_REGION || 'ap-south-1' }}"
+          HCL
+          terraform init -backend-config=backend.hcl -input=false >/dev/null
+          set +e
+          terraform plan -input=false -no-color -lock=false -detailed-exitcode > plan.txt 2>&1
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+      - name: open drift issue
+        if: steps.plan.outputs.exitcode == '2'
+        uses: actions/github-script@v7
+        env:
+          ENV_NAME: ${{ matrix.env }}
+        with:
+          script: |
+            const fs = require('fs');
+            const env = process.env.ENV_NAME;
+            const plan = fs.readFileSync(`envs/${env}/plan.txt`, 'utf8').slice(-50000);
+            const title = `Drift detected in ${env}`;
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'drift' });
+            const body = `Scheduled plan found differences.\n\n\`\`\`\n${plan}\n\`\`\``;
+            const existing = issues.find(i => i.title === title);
+            if (existing) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+            else await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['drift'] });
+      - name: fail on plan error
+        if: steps.plan.outputs.exitcode == '1'
+        run: cat envs/${{ matrix.env }}/plan.txt && exit 1

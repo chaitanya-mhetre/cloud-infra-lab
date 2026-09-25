@@ -1,0 +1,52 @@
+name: infra-apply
+
+# Manual only. The GitHub environment "infra-<env>" must have required reviewers;
+# the AWS apply role trusts ONLY tokens issued for that environment.
+on: # checkov:skip=CKV_GHA_7:Input selects which environment to apply, not build parameters; the job is gated by environment reviewers.
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment to apply
+        type: choice
+        options: [dev, staging, prod-like]
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-apply-${{ inputs.env }}
+  cancel-in-progress: false # never cancel an apply halfway
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: infra-${{ inputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      - name: init
+        working-directory: envs/${{ inputs.env }}
+        run: |
+          cat > backend.hcl <<HCL
+          bucket         = "${{ vars.TF_STATE_BUCKET }}"
+          dynamodb_table = "${{ vars.TF_LOCK_TABLE }}"
+          region         = "${{ vars.AWS_REGION || 'ap-south-1' }}"
+          HCL
+          terraform init -backend-config=backend.hcl -input=false
+      - name: plan
+        working-directory: envs/${{ inputs.env }}
+        run: terraform plan -input=false -lock-timeout=120s -out=tfplan
+      - name: apply exactly the reviewed plan
+        working-directory: envs/${{ inputs.env }}
+        run: terraform apply -input=false -lock-timeout=120s tfplan
