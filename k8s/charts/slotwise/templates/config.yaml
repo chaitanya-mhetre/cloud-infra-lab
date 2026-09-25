@@ -1,0 +1,35 @@
+# ConfigMap + (optional) Secret are pre-install/pre-upgrade hooks with a lower weight than the
+# migration Job, so they exist BEFORE the Job runs on first install. Trade-off: hook resources
+# are not removed by `helm uninstall` (documented in docs/LEARNING_GUIDE.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "slotwise.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "slotwise.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  {{- range $k, $v := .Values.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+{{- if not .Values.secrets.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "slotwise.secretName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "slotwise.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+type: Opaque
+stringData:
+  {{- range $k, $v := .Values.secrets.values }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+{{- end }}

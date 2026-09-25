@@ -1,0 +1,7 @@
+Slotwise {{ .Values.image.tag }} installed as {{ .Release.Name }}.
+
+{{- if .Values.ingress.enabled }}
+  curl http://{{ .Values.ingress.host }}/readyz
+{{- end }}
+
+Watch the HPA:  kubectl get hpa -n {{ .Release.Namespace }} -w

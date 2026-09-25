@@ -1,0 +1,8 @@
+image:
+  tag: ci-0000000
+secrets:
+  values:
+    SLOTWISE_JWT_SECRET: ci-only
+metrics:
+  serviceMonitor:
+    enabled: true

@@ -1,0 +1,118 @@
+# Image built by the app pipeline (arm64 + amd64 for kind). Tag = git SHA; never a moving tag.
+image:
+  repository: slotwise
+  tag: ""          # required: --set image.tag=<sha>
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Non-secret config -> ConfigMap. Keys become env vars as-is.
+config:
+  SLOTWISE_ENV: k8s
+  SLOTWISE_S3_BUCKET: slotwise-uploads
+  SLOTWISE_WORKER_METRICS_PORT: "9101"
+  SLOTWISE_RELAY_METRICS_PORT: "9102"
+
+# Secret env vars. Either reference an existing Secret (recommended: External Secrets / sealed-secrets)
+# or let the chart create one from `secrets.values` (local kind only).
+secrets:
+  existingSecret: ""
+  values: {}
+  #  SLOTWISE_DATABASE_URL: postgresql+asyncpg://slotwise_app:...@postgres:5432/slotwise
+  #  SLOTWISE_MIGRATION_DATABASE_URL: ...
+  #  SLOTWISE_WORKER_DATABASE_URL: ...
+  #  SLOTWISE_REDIS_URL: redis://redis:6379/0
+  #  SLOTWISE_CELERY_BROKER_URL: redis://redis:6379/1
+  #  SLOTWISE_JWT_SECRET: ...
+  #  SLOTWISE_FERNET_KEY: ...
+
+api:
+  replicas: 2
+  command: ["uvicorn", "slotwise.main:app", "--host", "0.0.0.0", "--port", "8000",
+            "--proxy-headers", "--forwarded-allow-ips", "*", "--timeout-graceful-shutdown", "20"]
+  port: 8000
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }   # no CPU limit: throttling hurts latency more than it protects
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 60
+  pdb:
+    minAvailable: 1
+
+# Background processes share the image; each is its own Deployment.
+workers:
+  worker:
+    replicas: 1
+    command: ["celery", "-A", "slotwise.worker.celery_app", "worker", "--pool", "threads", "--concurrency", "8", "-l", "info"]
+    metricsPort: 9101
+    terminationGracePeriodSeconds: 90   # finish in-flight tasks
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+  beat:
+    replicas: 1                          # MUST stay 1 (Recreate strategy): duplicate beats = duplicate jobs
+    singleton: true
+    command: ["celery", "-A", "slotwise.worker.celery_app", "beat", "-l", "info", "--schedule", "/tmp/celerybeat-schedule"]
+    terminationGracePeriodSeconds: 30
+    resources:
+      requests: { cpu: 25m, memory: 128Mi }
+      limits: { memory: 256Mi }
+  relay:
+    replicas: 1
+    command: ["python", "-m", "slotwise.outbox.relay"]
+    metricsPort: 9102
+    terminationGracePeriodSeconds: 30
+    resources:
+      requests: { cpu: 25m, memory: 128Mi }
+      limits: { memory: 256Mi }
+
+migrations:
+  enabled: true
+  command: ["alembic", "upgrade", "head"]
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: slotwise.localtest.me   # *.localtest.me resolves to 127.0.0.1
+  tls: []
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+
+metrics:
+  serviceMonitor:
+    enabled: false   # true when kube-prometheus-stack is installed
+    interval: 30s
+
+networkPolicy:
+  enabled: true
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []

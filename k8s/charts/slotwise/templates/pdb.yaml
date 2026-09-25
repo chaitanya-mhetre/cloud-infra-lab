@@ -1,0 +1,11 @@
+# Voluntary disruptions (node drains, cluster upgrades) may never take the API below minAvailable.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "slotwise.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "slotwise.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels: {{- include "slotwise.selector" (dict "root" . "component" "api") | nindent 6 }}

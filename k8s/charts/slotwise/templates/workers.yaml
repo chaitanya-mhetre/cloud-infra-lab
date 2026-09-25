@@ -1,0 +1,77 @@
+{{- range $name, $w := .Values.workers }}
+{{- $sel := include "slotwise.selector" (dict "root" $ "component" $name) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "slotwise.fullname" $ }}-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels: {{- include "slotwise.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  {{- if not (and $w.autoscaling $w.autoscaling.enabled) }}
+  replicas: {{ $w.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: {{- $sel | nindent 6 }}
+  strategy:
+    {{- if $w.singleton }}
+    type: Recreate          # stop the old pod before starting the new one: never two schedulers
+    {{- else }}
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+    {{- end }}
+  template:
+    metadata:
+      labels: {{- $sel | nindent 8 }}
+      annotations:
+        checksum/config: {{ toJson $.Values.config | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "slotwise.fullname" $ }}
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ $w.terminationGracePeriodSeconds }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "slotwise.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          command: {{- toYaml $w.command | nindent 12 }}
+          envFrom: {{- include "slotwise.envFrom" $ | nindent 12 }}
+          securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml $w.resources | nindent 12 }}
+          {{- if $w.metricsPort }}
+          ports:
+            - name: metrics
+              containerPort: {{ $w.metricsPort }}
+          # workers have no HTTP API; liveness = metrics endpoint answers (process not wedged)
+          livenessProbe:
+            tcpSocket: { port: metrics }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          {{- end }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes: {{- include "slotwise.tmpVolume" $ | nindent 8 }}
+{{- if $w.metricsPort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "slotwise.fullname" $ }}-{{ $name }}-metrics
+  namespace: {{ $.Release.Namespace }}
+  labels: {{- include "slotwise.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  clusterIP: None
+  selector: {{- $sel | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ $w.metricsPort }}
+      targetPort: metrics
+{{- end }}
+{{- end }}

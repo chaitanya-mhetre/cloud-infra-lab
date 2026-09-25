@@ -1,0 +1,6 @@
+apiVersion: v2
+name: slotwise
+description: production-fastapi (Slotwise) — API, Celery worker, beat, outbox relay, migrations
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
