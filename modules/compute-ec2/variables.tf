@@ -47,9 +47,9 @@ variable "api_image_repo" {
 }
 
 variable "initial_image_tag" {
-  description = "Tag deployed on first boot. Later deploys go through scripts/deploy.sh."
+  description = "Git-SHA tag deployed on first boot; empty = boot idle and wait for scripts/deploy.sh. (Tags are immutable, so there is no moving 'latest'.)"
   type        = string
-  default     = "latest-main"
+  default     = ""
 }
 
 variable "domain_name" {

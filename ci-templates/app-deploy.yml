@@ -1,0 +1,102 @@
+# TEMPLATE, not active in this repo. Copy to production-fastapi/.github/workflows/deploy.yml.
+# Pipeline: test -> build arm64 image -> scan -> push (tag = git SHA) -> deploy dev -> smoke.
+# Promotion to staging/prod-like re-deploys the SAME immutable tag (no rebuild).
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Target environment
+        type: choice
+        options: [dev, staging, prod-like]
+        default: dev
+      tag:
+        description: Existing image tag (git SHA) to promote; empty = this commit
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.env || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+  ECR_REPO: ${{ vars.ECR_REPOSITORY }} # e.g. 123456789012.dkr.ecr.ap-south-1.amazonaws.com/cil/slotwise
+
+jobs:
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make check
+
+  build:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-24.04-arm # native arm64 build for the Graviton targets
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: build
+        run: docker build -t "$ECR_REPO:${{ steps.meta.outputs.tag }}" .
+      - name: scan (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: push
+        run: docker push "$ECR_REPO:${{ steps.meta.outputs.tag }}"
+
+  deploy:
+    needs: [build]
+    if: always() && (needs.build.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: app-${{ inputs.env || 'dev' }} # staging/prod-like environments require approval
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/cloud-infra-lab
+          path: infra
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: deploy
+        env:
+          TARGET_ENV: ${{ inputs.env || 'dev' }}
+          TAG: ${{ inputs.tag || needs.build.outputs.tag }}
+          # The deploy role cannot read Terraform state, so targets come from environment variables.
+          DEV_INSTANCE_ID: ${{ vars.DEV_INSTANCE_ID }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          BASE_URL: ${{ vars.BASE_URL }}
+        run: |
+          if [ "$TARGET_ENV" = dev ]; then
+            infra/scripts/ssm-deploy.sh "$AWS_REGION" "$DEV_INSTANCE_ID" "$TAG"
+          else
+            infra/scripts/ecs-deploy.sh "$AWS_REGION" "$ECS_CLUSTER" "$TAG"
+          fi
+          infra/scripts/smoke.sh "$BASE_URL"

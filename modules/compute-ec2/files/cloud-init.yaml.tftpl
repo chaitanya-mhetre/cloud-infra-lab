@@ -26,4 +26,9 @@ runcmd:
   # Renew twice a day via the webroot served by nginx; reload nginx after.
   - echo '17 3,15 * * * root docker run --rm -v ${app_dir}/certbot/conf:/etc/letsencrypt -v ${app_dir}/certbot/www:/var/www/certbot certbot/certbot renew --webroot -w /var/www/certbot --quiet && docker compose -f ${app_dir}/docker-compose.yml exec nginx nginx -s reload' > /etc/cron.d/certbot-renew
 %{ endif ~}
+%{ if image_tag != "" ~}
   - ${app_dir}/host-deploy.sh ${image_tag}
+%{ else ~}
+  # No initial tag: the host boots idle and waits for the first `make deploy ENV=dev IMAGE_TAG=<sha>`.
+  - echo "no initial image tag; waiting for first deploy"
+%{ endif ~}
