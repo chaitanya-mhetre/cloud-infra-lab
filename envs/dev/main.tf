@@ -7,6 +7,14 @@ locals {
   ssm_prefix = "/slotwise/${local.env}"
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+
+locals {
+  state_bucket_arn = "arn:${data.aws_partition.current.partition}:s3:::${data.aws_caller_identity.current.account_id}-${var.project}-tfstate"
+  lock_table_arn   = "arn:${data.aws_partition.current.partition}:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${var.project}-tf-locks"
+}
+
 # Created by envs/shared; looked up by name so dev can be destroyed/recreated independently.
 data "aws_ecr_repository" "slotwise" {
   name = "${var.project}/slotwise"
@@ -61,6 +69,16 @@ module "iam" {
   ecr_repository_arns = [data.aws_ecr_repository.slotwise.arn]
   log_group_arns      = [module.host.log_group_arn]
   create_ec2_role     = true
+
+  # CI/CD (M3): gated apply for this env + deploy role for the app repo.
+  github_owner              = var.github_owner
+  create_github_apply_role  = true
+  apply_environment         = "infra-${local.env}"
+  create_github_deploy_role = true
+  app_repos                 = ["production-fastapi"]
+  deploy_instance_tag_env   = local.env
+  state_bucket_arn          = local.state_bucket_arn
+  lock_table_arn            = local.lock_table_arn
 }
 
 module "host" {

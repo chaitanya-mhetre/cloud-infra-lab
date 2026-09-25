@@ -17,3 +17,13 @@ output "ssm_path_prefix" {
   description = "Where to put secrets: scripts/put-secret.sh dev <NAME>"
   value       = module.secrets.path_prefix
 }
+
+output "github_apply_role_arn" {
+  description = "Set as AWS_APPLY_ROLE_ARN on the GitHub environment infra-dev."
+  value       = module.iam.github_apply_role_arn
+}
+
+output "github_deploy_role_arn" {
+  description = "Set as AWS_DEPLOY_ROLE_ARN in the production-fastapi repo."
+  value       = module.iam.github_deploy_role_arn
+}

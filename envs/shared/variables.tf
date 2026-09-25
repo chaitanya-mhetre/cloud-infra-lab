@@ -15,3 +15,9 @@ variable "owner" {
   type        = string
   default     = "chaitanya"
 }
+
+variable "github_owner" {
+  description = "GitHub user/org that owns the infra and app repos (OIDC trust)."
+  type        = string
+  default     = "CHANGE-ME"
+}

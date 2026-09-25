@@ -29,9 +29,9 @@ variable "instance_type" {
 }
 
 variable "initial_image_tag" {
-  description = "Image tag deployed on first boot."
+  description = "Git SHA deployed on first boot (empty = wait for the first deploy)."
   type        = string
-  default     = "latest-main"
+  default     = ""
 }
 
 variable "domain_name" {
@@ -44,4 +44,10 @@ variable "acme_email" {
   description = "Let's Encrypt contact email (needed with domain_name)."
   type        = string
   default     = ""
+}
+
+variable "github_owner" {
+  description = "GitHub user/org that owns the infra and app repos (OIDC trust)."
+  type        = string
+  default     = "CHANGE-ME"
 }
