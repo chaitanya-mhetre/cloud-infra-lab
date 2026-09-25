@@ -12,13 +12,16 @@
 5. **Fargate.** vCPU-hours + GB-hours; Spot is much cheaper for workers.
 6. **ElastiCache.** Node-hours.
 7. CloudWatch logs and metrics, ECR storage, S3, Elastic IPs (public IPv4 addresses are billed hourly).
+8. **WAF** (only where `waf.enabled`). A monthly fee per web ACL, plus per rule/managed group, plus per million requests. With the 5 rules here:
+   **roughly $10–15/month + ~$0.60 per million requests** (estimate). Logs only keep blocked/counted requests to limit log cost.
+9. **AWS Network Firewall** (not built). An hourly charge per endpoint per AZ plus per GB processed: on the order of **$300+/month for 2 AZs** (estimate). That's why egress filtering uses security groups instead.
 
 ## Estimated monthly cost *if left running 24/7* (don't do this)
 | Env | Main components | Rough estimate (USD/month) |
 |---|---|---|
 | dev (low-cost) | 1× t4g.small, 20 GB gp3, Elastic IP, logs | **~15–25** (estimate) |
 | staging | NAT, ALB, 2× 0.25 vCPU API + worker + beat + relay on Fargate/Spot, db.t4g.micro, cache.t4g.micro | **~110–160** (estimate) |
-| prod-like | + Multi-AZ db.t4g.medium, Redis replica, 6 interface endpoints × 2 AZ, bigger tasks | **~350–500** (estimate) |
+| prod-like | + Multi-AZ db.t4g.medium, Redis replica, 6 interface endpoints × 2 AZ, bigger tasks, WAF | **~360–515** (estimate) |
 
 For precise numbers, run `make cost ENV=staging` (infracost; needs an infracost API key) and paste the output here with the date.
 

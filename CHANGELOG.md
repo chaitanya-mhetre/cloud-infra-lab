@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow milestones; dates are commit dates.
 
+## [Unreleased]
+### Security: WAF and egress filtering (#3)
+- New `modules/waf`: WAFv2 web ACL on the ALB. Per-IP rate limit (429), an always-on KnownBadInputs (Log4Shell) group,
+  configurable IP reputation / Common Rule Set / SQLi groups, count→block rollout switch, logs with redacted auth/cookie headers
+  that keep only blocked/counted requests. 7 offline `terraform test` runs.
+- `modules/security`: `egress_mode = "restricted"`. App HTTPS only to interface endpoints (VPC CIDR), the S3 gateway prefix list
+  and a CIDR allow-list, with validation (standard mode only, needs endpoints, no 0.0.0.0/0). 5 new tests.
+- `stack-standard`: `waf` and `egress` inputs. prod-like runs WAF in block mode; staging has it off; egress stays open for
+  Slotwise because webhook targets are customer-chosen (see docs/security.md#egress).
+- docs/security.md, docs/cost.md (WAF and Network Firewall estimates), README limitations, learning guide.
+
 ## [0.1.0] - 2026-09-25
 ### M7: docs + hardening
 - Network, IAM, secrets, scaling, rollback, cost (estimates), observability, security, runbook, ECS-vs-EKS docs; learning guide.

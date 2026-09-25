@@ -89,6 +89,13 @@ Anything Terraform sets ends up in state. So secrets are created as `PLACEHOLDER
 - **IMDSv2** (`http_tokens = "required"`): the metadata service needs a session token from a PUT, so a simple SSRF GET can't steal
   instance credentials. Hop limit 2 so containers on the host can still reach it.
 - **SSM Session Manager** instead of SSH: no open port, IAM-controlled, logged.
+- **WAF (`modules/waf/main.tf`)**: a web ACL is an ordered list of rules. `action` on your own rules, `override_action` on
+  managed groups (`none` = keep the group's own actions, `count` = force count). The rate rule goes first so floods are cheap to drop.
+  The count→block rollout is one variable. KnownBadInputs is a fixed rule so a list override can't silently remove Log4Shell protection
+  (checkov's CKV_AWS_192 caught the first version, where it was only in the configurable list).
+- **Egress filtering (`modules/security/main.tf`, `egress_mode`)**: SGs are IP-based. Restricted mode allows the VPC CIDR (interface
+  endpoints), the S3 gateway **prefix list** (a managed list of S3's IP ranges) and explicit CIDRs. Hostname-based filtering needs a
+  proxy or Network Firewall (SNI). Cross-variable validation (Terraform ≥ 1.9) stops restricted mode without endpoints.
 
 ## 4. IAM (see docs/iam.md for the full table)
 - **Trust policy** (who can assume) vs **permission policy** (what they can do).
@@ -187,6 +194,12 @@ Anything Terraform sets ends up in state. So secrets are created as `PLACEHOLDER
 26. **How would you connect 10 ECS tasks to a small RDS without exhausting connections?** Smaller pools per task, RDS Proxy or PgBouncer, and do the
     math: tasks × pool size must stay below `max_connections`.
 27. **What does `create_before_destroy` do on the ACM certificate?** It issues and validates the new cert before deleting the old one, so the listener is never left certless.
+28. **How would you roll out a WAF without breaking production?** Start in count mode, read the logs for a week for false positives,
+    downgrade the specific noisy rules to count (`rule_action_override`), then switch to block. Keep the rate limit generous and the app's own limits as the main control.
+29. **Why can't security groups do domain-based egress filtering, and what can?** SG rules match IPs and prefix lists. Domains resolve to
+    changing IPs behind CDNs. Use an egress proxy with a hostname allow-list, or AWS Network Firewall with TLS SNI domain lists.
+30. **What's a VPC endpoint prefix list used for?** The S3 gateway endpoint exposes a managed prefix list of S3 IP ranges. Referencing it
+    in an SG rule allows S3 over the endpoint without opening 443 to the internet.
 
 ---
 

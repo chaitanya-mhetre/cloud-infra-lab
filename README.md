@@ -110,13 +110,14 @@ are applied per demo session and destroyed. `scripts/cost-check.sh` fails if bil
 - Not yet applied to AWS; the AWS-side acceptance criteria (HTTPS smoke, alarm delivery, zero-downtime ECS deploy under k6) are open.
 - slotwise chart validated offline only (the live kind run covered rag-engine, because of laptop RAM).
 - rag-engine stores uploads on local disk, so multi-node Kubernetes needs RWX storage or moving uploads to S3.
-- No WAF, egress filtering, ALB access logs, tracing backend, or permissions boundary (see docs/security.md).
+- WAF is written and tested offline but never applied or tuned on real traffic. Slotwise egress stays open: webhook targets are arbitrary URLs
+  (restricted SG egress exists for fixed-destination workloads). No ALB access logs, tracing backend, or permissions boundary (see docs/security.md).
 
 ## Roadmap
 1. First real AWS session: dev → smoke → destroy, record actual cost
 2. staging apply + k6 rolling-deploy test + deliberate alarm
 3. Optional short EKS run (`envs/eks-demo`) with cost recorded before/after
-4. Permissions boundary, WAF, ALB access logs, OTel collector → X-Ray/Tempo
+4. Permissions boundary, ALB access logs, OTel collector → X-Ray/Tempo, egress proxy for webhooks
 
 ## Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md). Learning notes: [docs/LEARNING_GUIDE.md](docs/LEARNING_GUIDE.md).
