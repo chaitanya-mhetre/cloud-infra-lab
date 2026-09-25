@@ -1,5 +1,10 @@
 {{- define "slotwise.fullname" -}}
+{{- /* "rag-engine" release of the "rag-engine" chart -> "rag-engine", not "rag-engine-rag-engine" */ -}}
+{{- if contains .Chart.Name .Release.Name -}}
+{{- .Release.Name | trunc 50 | trimSuffix "-" -}}
+{{- else -}}
 {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 50 | trimSuffix "-" -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "slotwise.labels" -}}
