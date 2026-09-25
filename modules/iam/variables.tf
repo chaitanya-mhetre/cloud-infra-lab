@@ -111,3 +111,15 @@ variable "deploy_instance_tag_env" {
   type        = string
   default     = ""
 }
+
+variable "create_ecs_roles" {
+  description = "Create ECS task execution + task roles (standard mode)."
+  type        = bool
+  default     = false
+}
+
+variable "enable_ecs_exec" {
+  description = "Allow `aws ecs execute-command` into tasks (debugging) — adds SSM messages permissions to the task role."
+  type        = bool
+  default     = true
+}

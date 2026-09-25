@@ -7,6 +7,9 @@
 #   deploy : app repos, main branch only       -> push images + roll services, nothing else
 
 locals {
+  # The deploy role may pass exactly the ECS roles this module created (plus any given explicitly).
+  passable_role_arns = concat(var.passable_role_arns, aws_iam_role.ecs_execution[*].arn, aws_iam_role.ecs_task[*].arn)
+
   gh_provider_arn = coalesce(var.github_oidc_provider_arn, "arn:${local.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com")
 }
 
@@ -238,11 +241,11 @@ data "aws_iam_policy_document" "gh_deploy" {
   }
 
   dynamic "statement" {
-    for_each = length(var.passable_role_arns) > 0 ? [1] : []
+    for_each = length(local.passable_role_arns) > 0 ? [1] : []
     content {
       sid       = "PassOnlyTaskRoles"
       actions   = ["iam:PassRole"]
-      resources = var.passable_role_arns
+      resources = local.passable_role_arns
       condition {
         test     = "StringEquals"
         variable = "iam:PassedToService"
