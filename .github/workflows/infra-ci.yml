@@ -54,6 +54,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # gitleaks runs first: checkov's container leaves root-owned files that block gitleaks' SARIF report.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: checkov
         uses: bridgecrewio/checkov-action@v12
         with:
@@ -62,10 +67,6 @@ jobs:
           skip_path: k8s
           quiet: true
           compact: true
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
 
   render:
     name: host templates · helm
