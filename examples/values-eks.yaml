@@ -1,0 +1,15 @@
+# helm upgrade --install slotwise k8s/charts/slotwise -n slotwise -f examples/values-eks.yaml --set image.tag=<sha>
+image:
+  repository: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/cil/slotwise
+  pullPolicy: IfNotPresent
+secrets:
+  existingSecret: slotwise-env # synced from SSM by External Secrets Operator, not created by the chart
+ingress:
+  className: alb # AWS Load Balancer Controller
+  host: slotwise.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+metrics:
+  serviceMonitor:
+    enabled: true
