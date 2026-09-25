@@ -110,3 +110,27 @@ variable "app_repos" {
   type        = list(string)
   default     = ["production-fastapi"]
 }
+
+variable "waf" {
+  description = "WAF on the ALB. enabled=false costs nothing; mode=count logs only, block enforces. See modules/waf."
+  type = object({
+    enabled             = bool
+    mode                = optional(string, "count")
+    rate_limit_per_5min = optional(number, 2000)
+  })
+  default = { enabled = false }
+}
+
+variable "egress" {
+  description = "App-tier HTTPS egress. restricted needs enable_interface_endpoints (ECR/SSM/Logs) or tasks can't pull images or ship logs."
+  type = object({
+    mode          = optional(string, "open")
+    allowed_cidrs = optional(list(string), [])
+  })
+  default = {}
+
+  validation {
+    condition     = var.egress.mode != "restricted" || var.enable_interface_endpoints
+    error_message = "egress.mode = restricted requires enable_interface_endpoints = true."
+  }
+}

@@ -50,3 +50,8 @@ output "ids" {
     log_group_name          = module.ecs.log_group_name
   }
 }
+
+output "waf_web_acl_name" {
+  description = "WAF web ACL name (empty when WAF is disabled)."
+  value       = var.waf.enabled ? module.waf[0].web_acl_name : ""
+}

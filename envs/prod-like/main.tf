@@ -27,4 +27,12 @@ module "stack" {
   api                = { cpu = 512, memory = 1024, desired = 3, min = 3, max = 10, target_cpu = 55 }
   worker             = { cpu = 512, memory = 1024, desired = 2, min = 2, max = 6 }
   log_retention_days = 30
+
+  # WAF in block mode. In a real rollout run mode = "count" for a week first and check the logs
+  # for false positives (docs/security.md#waf).
+  waf = { enabled = true, mode = "block", rate_limit_per_5min = 2000 }
+
+  # Egress stays open: Slotwise delivers webhooks to customer-chosen URLs, which an IP allow-list
+  # cannot express. Restricted mode fits workloads with fixed destinations (docs/security.md#egress).
+  egress = { mode = "open" }
 }

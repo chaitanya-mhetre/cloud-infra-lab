@@ -5,7 +5,7 @@ locals {
 resource "aws_lb" "this" {
   #checkov:skip=CKV_AWS_91:ALB access logs need a log bucket with a regional ELB principal policy; deferred (docs/observability.md).
   #checkov:skip=CKV_AWS_150:Deletion protection is a variable: off for disposable envs.
-  #checkov:skip=CKV2_AWS_28:No WAF in the lab (cost); rate limiting is done in the app. Listed in docs/security.md.
+  #checkov:skip=CKV2_AWS_28:WAF is attached by modules/waf from stack-standard (waf.enabled, on in prod-like); checkov can't see the cross-module association.
   #checkov:skip=CKV2_AWS_20:HTTP listener only redirects to HTTPS when a domain is configured; HTTP-only mode is demo-only.
   name                       = substr(var.name, 0, 32)
   load_balancer_type         = "application"

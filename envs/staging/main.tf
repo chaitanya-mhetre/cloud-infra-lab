@@ -25,4 +25,7 @@ module "stack" {
   api                = { cpu = 256, memory = 512, desired = 2, min = 2, max = 4, target_cpu = 60 }
   worker             = { cpu = 256, memory = 512, desired = 1, min = 1, max = 2 }
   log_retention_days = 7
+
+  # Off by default to keep staging cheap. Flip to { enabled = true, mode = "count" } to try the rules.
+  waf = { enabled = false }
 }

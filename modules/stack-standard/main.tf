@@ -32,9 +32,13 @@ module "network" {
 module "security" {
   source = "../security"
 
-  name   = local.name
-  vpc_id = module.network.vpc_id
-  mode   = "standard"
+  name                 = local.name
+  vpc_id               = module.network.vpc_id
+  mode                 = "standard"
+  egress_mode          = var.egress.mode
+  egress_allowed_cidrs = var.egress.allowed_cidrs
+  vpc_cidr             = module.network.vpc_cidr_block
+  s3_prefix_list_id    = module.network.s3_prefix_list_id
 }
 
 module "storage" {
@@ -119,6 +123,17 @@ module "loadbalancer" {
   domain_name         = var.domain_name
   route53_zone_id     = var.route53_zone_id
   deletion_protection = !var.disposable
+}
+
+module "waf" {
+  source = "../waf"
+  count  = var.waf.enabled ? 1 : 0
+
+  name                = local.name
+  alb_arn             = module.loadbalancer.alb_arn
+  mode                = var.waf.mode
+  rate_limit_per_5min = var.waf.rate_limit_per_5min
+  log_retention_days  = var.log_retention_days
 }
 
 module "ecs" {
