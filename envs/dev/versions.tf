@@ -1,0 +1,33 @@
+terraform {
+  required_version = ">= 1.9.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.70"
+    }
+  }
+
+  # Partial backend config: bucket/table come from backend.hcl (see backend.hcl.example),
+  # so account-specific names never get committed.
+  #   terraform init -backend-config=backend.hcl
+  backend "s3" {
+    key     = "dev/terraform.tfstate"
+    encrypt = true
+  }
+}
+
+provider "aws" {
+  region = var.region
+
+  default_tags {
+    tags = {
+      Project   = var.project
+      Env       = local.env
+      Owner     = var.owner
+      ManagedBy = "terraform"
+      # nightly-destroy-dev.yml and scripts/cost-check.sh look for this tag
+      TTL = "nightly"
+    }
+  }
+}
