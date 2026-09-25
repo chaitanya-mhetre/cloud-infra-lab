@@ -35,6 +35,10 @@ jobs:
             (cd "$d" && terraform init -backend=false -input=false >/dev/null && terraform validate -no-color)
             echo "::endgroup::"
           done
+      - name: terraform test (mocked provider)
+        run: |
+          set -e
+          for t in modules/*/tests; do (cd "${t%/tests}" && terraform init -backend=false >/dev/null && terraform test); done
       - uses: terraform-linters/setup-tflint@v4
       - name: tflint
         run: |

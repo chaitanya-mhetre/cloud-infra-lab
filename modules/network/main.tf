@@ -59,9 +59,10 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "app" {
   count = var.az_count
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = local.app_cidrs[count.index]
-  availability_zone = local.azs[count.index]
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = local.app_cidrs[count.index]
+  availability_zone       = local.azs[count.index]
+  map_public_ip_on_launch = false
 
   tags = { Name = "${var.name}-app-${local.azs[count.index]}", Tier = "app" }
 }
@@ -69,9 +70,10 @@ resource "aws_subnet" "app" {
 resource "aws_subnet" "data" {
   count = var.az_count
 
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = local.data_cidrs[count.index]
-  availability_zone = local.azs[count.index]
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = local.data_cidrs[count.index]
+  availability_zone       = local.azs[count.index]
+  map_public_ip_on_launch = false
 
   tags = { Name = "${var.name}-data-${local.azs[count.index]}", Tier = "data" }
 }
@@ -97,6 +99,7 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_eip" "nat" {
+  #checkov:skip=CKV2_AWS_19:This EIP belongs to the NAT gateway, not an EC2 instance.
   count  = var.enable_nat_gateway ? 1 : 0
   domain = "vpc"
   tags   = { Name = "${var.name}-nat" }
@@ -157,6 +160,7 @@ resource "aws_vpc_endpoint" "s3" {
 }
 
 resource "aws_security_group" "endpoints" {
+  #checkov:skip=CKV2_AWS_5:Attached to the interface endpoints below; checkov misses count/for_each attachment.
   count = var.enable_interface_endpoints ? 1 : 0
 
   name        = "${var.name}-vpce"

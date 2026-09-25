@@ -7,14 +7,14 @@ ENV ?= dev
 TF_DIRS := bootstrap $(wildcard modules/*) $(wildcard envs/*) tests/render
 CHART_DIRS := $(wildcard k8s/charts/*)
 
-.PHONY: check fmt fmt-check validate lint scan helm-check render-test help \
+.PHONY: check fmt fmt-check validate test lint scan helm-check render-test help \
         bootstrap plan apply destroy deploy rollback cost \
         k8s-up k8s-deploy k8s-down
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
-check: fmt-check validate lint scan render-test helm-check ## All offline checks (no AWS access needed)
+check: fmt-check validate test lint scan render-test helm-check ## All offline checks (no AWS access needed)
 	@echo "✔ all offline checks passed"
 
 fmt: ## Format all Terraform
@@ -28,6 +28,13 @@ validate: ## terraform init -backend=false && validate in every stack/module
 	  echo "== validate $$d"; \
 	  (cd $$d && $(CURDIR)/$(TOOLS) terraform init -backend=false -input=false -no-color >/dev/null \
 	          && $(CURDIR)/$(TOOLS) terraform validate -no-color); \
+	done
+
+test: ## terraform test (mocked AWS provider) for modules that have tests/
+	@set -e; for d in $(dir $(wildcard modules/*/tests/*.tftest.hcl)); do \
+	  m=$${d%tests/}; echo "== test $$m"; \
+	  (cd $$m && $(CURDIR)/$(TOOLS) terraform init -backend=false -input=false >/dev/null \
+	          && $(CURDIR)/$(TOOLS) terraform test -no-color | tail -1); \
 	done
 
 lint: ## tflint (recommended preset + AWS ruleset)
