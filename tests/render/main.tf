@@ -23,7 +23,9 @@ locals {
     acme_email      = "ops@example.com"
     log_group       = "/slotwise/cil-dev/containers"
     api_command     = "uvicorn slotwise.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
-    worker_command  = "celery -A slotwise.worker.celery_app worker --loglevel=INFO --concurrency=2"
+    worker_command  = "celery -A slotwise.worker.celery_app worker --pool threads --concurrency 4 -l info"
+    beat_command    = "celery -A slotwise.worker.celery_app beat -l info --schedule /tmp/celerybeat-schedule"
+    relay_command   = "python -m slotwise.outbox.relay"
     migrate_command = "alembic upgrade head"
   }
   dir = "../../modules/compute-ec2/files"

@@ -20,7 +20,7 @@ output "log_group_arn" {
 
 output "service_names" {
   description = "ECS service names."
-  value       = [aws_ecs_service.api.name, aws_ecs_service.worker.name, aws_ecs_service.beat.name]
+  value       = [aws_ecs_service.api.name, aws_ecs_service.worker.name, aws_ecs_service.beat.name, aws_ecs_service.relay.name]
 }
 
 output "migrate_task_family" {

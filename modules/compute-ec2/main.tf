@@ -31,6 +31,8 @@ locals {
     log_group       = aws_cloudwatch_log_group.host.name
     api_command     = var.api_command
     worker_command  = var.worker_command
+    beat_command    = var.beat_command
+    relay_command   = var.relay_command
     migrate_command = var.migrate_command
   }
 

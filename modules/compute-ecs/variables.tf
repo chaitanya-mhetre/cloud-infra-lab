@@ -87,17 +87,19 @@ variable "worker" {
 }
 
 variable "commands" {
-  description = "Container commands. VERIFY worker/beat against production-fastapi's Celery module."
+  description = "Container commands (match production-fastapi's docker-compose.yml)."
   type = object({
     api     = list(string)
     worker  = list(string)
     beat    = list(string)
+    relay   = list(string)
     migrate = list(string)
   })
   default = {
-    api     = ["uvicorn", "slotwise.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
-    worker  = ["celery", "-A", "slotwise.worker.celery_app", "worker", "--loglevel=INFO"]
-    beat    = ["celery", "-A", "slotwise.worker.celery_app", "beat", "--loglevel=INFO"]
+    api     = ["uvicorn", "slotwise.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--timeout-graceful-shutdown", "20"]
+    worker  = ["celery", "-A", "slotwise.worker.celery_app", "worker", "--pool", "threads", "--concurrency", "8", "-l", "info"]
+    beat    = ["celery", "-A", "slotwise.worker.celery_app", "beat", "-l", "info", "--schedule", "/tmp/celerybeat-schedule"]
+    relay   = ["python", "-m", "slotwise.outbox.relay"]
     migrate = ["alembic", "upgrade", "head"]
   }
 }

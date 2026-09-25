@@ -3,7 +3,7 @@
 #   scripts/ecs-deploy.sh <region> <cluster> <image_tag>
 # 1. register new task-definition revisions (same config, new image tag)
 # 2. run the migration task and require exit code 0   (expand/contract migrations only)
-# 3. roll api/worker/beat; the deployment circuit breaker auto-rolls back if new tasks fail health checks
+# 3. roll api/worker/beat/relay; the deployment circuit breaker auto-rolls back if new tasks fail health checks
 # 4. wait for services to be stable
 set -euo pipefail
 REGION="${1:?region}"; CLUSTER="${2:?cluster}"; TAG="${3:?image tag}"
@@ -22,7 +22,7 @@ register() { # family -> new revision ARN with the image tag swapped
 
 echo "==> registering revisions for $TAG"
 declare -A ARN
-for svc in api worker beat migrate; do
+for svc in api worker beat relay migrate; do
   ARN[$svc]="$(register "$CLUSTER-$svc")"
   echo "    $svc -> ${ARN[$svc]##*/}"
 done
@@ -41,13 +41,13 @@ if [ "$CODE" != 0 ]; then
 fi
 
 echo "==> rolling services"
-for svc in api worker beat; do
+for svc in api worker beat relay; do
   aws_ ecs update-service --cluster "$CLUSTER" --service "$svc" --task-definition "${ARN[$svc]}" \
     --query 'service.deployments[0].status' --output text >/dev/null
 done
 
 echo "==> waiting for steady state (circuit breaker rolls back automatically on failure)"
-aws_ ecs wait services-stable --cluster "$CLUSTER" --services api worker beat
+aws_ ecs wait services-stable --cluster "$CLUSTER" --services api worker beat relay
 
 # If the circuit breaker fired, the service is "stable" but on the OLD revision.
 RUNNING="$(aws_ ecs describe-services --cluster "$CLUSTER" --services api \

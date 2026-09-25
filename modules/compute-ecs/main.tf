@@ -58,6 +58,7 @@ locals {
     api     = { cpu = var.api.cpu, memory = var.api.memory }
     worker  = { cpu = var.worker.cpu, memory = var.worker.memory }
     beat    = { cpu = 256, memory = 512 }
+    relay   = { cpu = 256, memory = 512 }
     migrate = { cpu = 256, memory = 512 }
   }
 }
@@ -174,6 +175,40 @@ resource "aws_ecs_service" "beat" {
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
+
+  network_configuration {
+    subnets          = var.app_subnet_ids
+    security_groups  = var.app_security_group_ids
+    assign_public_ip = false
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+}
+
+# Outbox relay: polls committed outbox rows and publishes them. One instance is enough;
+# rows are claimed with SELECT ... FOR UPDATE SKIP LOCKED, so a brief overlap during deploys is safe.
+resource "aws_ecs_service" "relay" {
+  name                   = "relay"
+  cluster                = aws_ecs_cluster.this.id
+  task_definition        = aws_ecs_task_definition.this["relay"].arn
+  desired_count          = 1
+  enable_execute_command = true
+  propagate_tags         = "SERVICE"
+
+  capacity_provider_strategy {
+    capacity_provider = var.use_spot_for_workers ? "FARGATE_SPOT" : "FARGATE"
+    weight            = 1
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   network_configuration {
     subnets          = var.app_subnet_ids

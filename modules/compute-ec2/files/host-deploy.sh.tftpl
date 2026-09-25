@@ -23,7 +23,7 @@ aws ecr get-login-password --region "${region}" | docker login --username AWS --
 export IMAGE_TAG="$TAG"
 
 echo "==> pulling ${image_repo}:$TAG"
-docker compose pull api worker
+docker compose pull api worker beat relay
 
 echo "==> starting data services"
 docker compose up -d postgres redis
@@ -33,8 +33,8 @@ docker compose up -d postgres redis
 echo "==> migrating"
 docker compose run --rm migrate
 
-echo "==> rolling api + worker"
-docker compose up -d --remove-orphans api worker nginx
+echo "==> rolling api + worker + beat + relay"
+docker compose up -d --remove-orphans api worker beat relay nginx
 
 echo "==> waiting for /readyz"
 for _ in $(seq 1 30); do
@@ -53,6 +53,6 @@ prev="$(cat "$CURRENT_FILE" 2>/dev/null || true)"
 if [ -n "$prev" ] && [ "$prev" != "$TAG" ]; then
   echo "==> automatic rollback to $prev" >&2
   export IMAGE_TAG="$prev"
-  docker compose up -d api worker
+  docker compose up -d api worker beat relay
 fi
 exit 1

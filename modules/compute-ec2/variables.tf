@@ -77,9 +77,21 @@ variable "api_command" {
 }
 
 variable "worker_command" {
-  description = "Container command for the background worker. VERIFY against production-fastapi once its worker module lands."
+  description = "Container command for the Celery worker (matches production-fastapi docker-compose.yml)."
   type        = string
-  default     = "celery -A slotwise.worker.celery_app worker --loglevel=INFO --concurrency=2"
+  default     = "celery -A slotwise.worker.celery_app worker --pool threads --concurrency 4 -l info"
+}
+
+variable "beat_command" {
+  description = "Celery beat (scheduler). Exactly one instance may run."
+  type        = string
+  default     = "celery -A slotwise.worker.celery_app beat -l info --schedule /tmp/celerybeat-schedule"
+}
+
+variable "relay_command" {
+  description = "Transactional-outbox relay (publishes committed events)."
+  type        = string
+  default     = "python -m slotwise.outbox.relay"
 }
 
 variable "migrate_command" {
