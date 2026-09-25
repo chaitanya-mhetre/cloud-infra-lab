@@ -41,6 +41,7 @@ locals {
     "nginx.conf"         = templatefile("${path.module}/files/nginx.conf.tftpl", local.tpl)
     "fetch-env.sh"       = templatefile("${path.module}/files/fetch-env.sh.tftpl", local.tpl)
     "host-deploy.sh"     = templatefile("${path.module}/files/host-deploy.sh.tftpl", local.tpl)
+    "db-roles.sh"        = file("${path.module}/files/db-roles.sh")
   }
 
   user_data = templatefile("${path.module}/files/cloud-init.yaml.tftpl", merge(local.tpl, {

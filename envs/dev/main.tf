@@ -53,6 +53,8 @@ module "secrets" {
     "JWT_SECRET",
     "FERNET_KEY",
     "MOCKPAY_WEBHOOK_SECRET",
+    "APP_DB_PASSWORD",    # password of slotwise_app (see modules/compute-ec2/files/db-roles.sh)
+    "WORKER_DB_PASSWORD", # password of slotwise_worker
   ]
   plain_parameters = {
     # Redis runs as a compose service on the host in dev.

@@ -10,7 +10,7 @@ cd "$ROOT/tests/render"
 for variant in http tls; do
   domain=""; [ "$variant" = tls ] && domain="dev.example.com"
   mkdir -p "$OUT/$variant"
-  for f in docker-compose.yml nginx.conf fetch-env.sh host-deploy.sh cloud-init.yaml; do
+  for f in docker-compose.yml nginx.conf fetch-env.sh host-deploy.sh db-roles.sh cloud-init.yaml; do
     # terraform console prints heredoc form for multi-line strings; jsonencode gives an exact round-trip.
     echo "jsonencode(local.rendered[\"$f\"])" \
       | "$ROOT/scripts/tools.sh" terraform console -var "domain_name=$domain" \
@@ -21,7 +21,7 @@ done
 echo "== shellcheck"
 mapfile -t repo_scripts < <(cd "$ROOT/scripts" && printf '/scripts/%s\n' *.sh)
 docker run --rm -v "$OUT:/mnt" -v "$ROOT/scripts:/scripts:ro" koalaman/shellcheck:stable \
-  /mnt/http/fetch-env.sh /mnt/http/host-deploy.sh "${repo_scripts[@]}"
+  /mnt/http/fetch-env.sh /mnt/http/host-deploy.sh /mnt/http/db-roles.sh "${repo_scripts[@]}"
 
 echo "== cloud-init YAML parses"
 for v in http tls; do python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$OUT/$v/cloud-init.yaml" 2>/dev/null \
@@ -29,7 +29,7 @@ for v in http tls; do python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[
 
 echo "== docker compose config"
 for v in http tls; do
-  printf 'SLOTWISE_POSTGRES_PASSWORD=x\nIMAGE_TAG=abc1234\n' > "$OUT/$v/.env"
+  printf 'SLOTWISE_POSTGRES_PASSWORD=x\nSLOTWISE_APP_DB_PASSWORD=x\nSLOTWISE_WORKER_DB_PASSWORD=x\nIMAGE_TAG=abc1234\n' > "$OUT/$v/.env"
   (cd "$OUT/$v" && IMAGE_TAG=abc1234 docker compose -f docker-compose.yml config -q)
 done
 

@@ -67,8 +67,11 @@ services:
       POSTGRES_DB: slotwise
       # Compose interpolates this from ./.env (written by fetch-env.sh from SSM).
       POSTGRES_PASSWORD: $${SLOTWISE_POSTGRES_PASSWORD:?set /slotwise/dev/POSTGRES_PASSWORD in SSM}
+      APP_DB_PASSWORD: $${SLOTWISE_APP_DB_PASSWORD:?set /slotwise/dev/APP_DB_PASSWORD in SSM}
+      WORKER_DB_PASSWORD: $${SLOTWISE_WORKER_DB_PASSWORD:?set /slotwise/dev/WORKER_DB_PASSWORD in SSM}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U slotwise"]
       interval: 5s

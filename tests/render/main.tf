@@ -35,6 +35,7 @@ locals {
     "nginx.conf"         = templatefile("${local.dir}/nginx.conf.tftpl", local.tpl)
     "fetch-env.sh"       = templatefile("${local.dir}/fetch-env.sh.tftpl", local.tpl)
     "host-deploy.sh"     = templatefile("${local.dir}/host-deploy.sh.tftpl", local.tpl)
+    "db-roles.sh"        = file("${local.dir}/db-roles.sh")
   }
 
   rendered = merge(local.files, {
