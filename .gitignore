@@ -1,0 +1,20 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.terraform.tfstate.lock.info
+override.tf
+override.tf.json
+*_override.tf
+# local secrets / overrides
+*.auto.tfvars
+backend.hcl
+secrets.tfvars
+.env
+# local tool cache
+.tools/
+# kube
+kubeconfig*
+modules/**/.terraform.lock.hcl

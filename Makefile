@@ -1,0 +1,80 @@
+# Offline-first Makefile. Nothing here talks to AWS unless you run plan/apply/destroy
+# explicitly, and even then apply/destroy ask for confirmation.
+SHELL := /usr/bin/env bash
+TOOLS := scripts/tools.sh
+ENV ?= dev
+
+TF_DIRS := bootstrap $(wildcard modules/*) $(wildcard envs/*)
+CHART_DIRS := $(wildcard k8s/charts/*)
+
+.PHONY: check fmt fmt-check validate lint scan helm-check help \
+        bootstrap plan apply destroy deploy rollback cost \
+        k8s-up k8s-deploy k8s-down
+
+help: ## Show targets
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
+
+check: fmt-check validate lint scan helm-check ## All offline checks (no AWS access needed)
+	@echo "✔ all offline checks passed"
+
+fmt: ## Format all Terraform
+	$(TOOLS) terraform fmt -recursive
+
+fmt-check: ## Fail if any Terraform is unformatted
+	$(TOOLS) terraform fmt -recursive -check -diff
+
+validate: ## terraform init -backend=false && validate in every stack/module
+	@set -e; for d in $(TF_DIRS); do \
+	  echo "== validate $$d"; \
+	  (cd $$d && $(CURDIR)/$(TOOLS) terraform init -backend=false -input=false -no-color >/dev/null \
+	          && $(CURDIR)/$(TOOLS) terraform validate -no-color); \
+	done
+
+lint: ## tflint (recommended preset + AWS ruleset)
+	$(TOOLS) tflint --init >/dev/null
+	$(TOOLS) tflint --recursive --config=/repo/.tflint.hcl
+
+scan: ## checkov IaC security scan (findings we accept are skipped inline with a reason)
+	$(TOOLS) checkov -d . --framework terraform github_actions kubernetes --quiet --compact \
+	  --skip-path .tools --skip-path .terraform
+
+helm-check: ## helm lint + render + kubeconform schema validation
+	@set -e; for c in $(CHART_DIRS); do \
+	  echo "== helm $$c"; \
+	  $(TOOLS) helm lint $$c --strict; \
+	  $(TOOLS) helm template ci $$c | $(TOOLS) kubeconform -strict -summary -ignore-missing-schemas -; \
+	done
+
+# ---------------------------------------------------------------------------
+# Targets below touch real AWS. Read docs/runbook.md first.
+# ---------------------------------------------------------------------------
+bootstrap: ## One-time: state bucket, lock table, GitHub OIDC provider
+	cd bootstrap && terraform init && terraform apply
+
+plan: ## terraform plan ENV=dev|staging|prod-like
+	cd envs/$(ENV) && terraform init -backend-config=backend.hcl -input=false && terraform plan -out=tfplan
+
+apply: ## terraform apply the saved plan (asks to confirm)
+	@read -p "Apply saved plan to $(ENV)? Type the env name: " c && [ "$$c" = "$(ENV)" ]
+	cd envs/$(ENV) && terraform apply tfplan
+
+destroy: ## Tear an environment down completely
+	scripts/teardown.sh $(ENV)
+
+deploy: ## Deploy image: make deploy ENV=staging IMAGE_TAG=<git sha>
+	scripts/deploy.sh $(ENV) $(IMAGE_TAG)
+
+rollback: ## Roll back: make rollback ENV=staging TO=<previous sha>
+	scripts/rollback.sh $(ENV) $(TO)
+
+cost: ## Estimated monthly cost (infracost, estimate only)
+	scripts/cost-estimate.sh $(ENV)
+
+k8s-up: ## Create local kind cluster 'cil-lab'
+	scripts/k8s.sh up
+
+k8s-deploy: ## Install both Helm charts into kind
+	scripts/k8s.sh deploy
+
+k8s-down: ## Delete the kind cluster
+	scripts/k8s.sh down
