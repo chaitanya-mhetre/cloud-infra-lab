@@ -1,0 +1,4 @@
+# Copy to backend.hcl (gitignored pattern: keep it local) and fill from `terraform output` in bootstrap/.
+bucket         = "123456789012-cil-tfstate"
+dynamodb_table = "cil-tf-locks"
+region         = "ap-south-1"
