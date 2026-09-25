@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Deploy a specific image tag on the low-cost host, with automatic rollback.
+#   host-deploy.sh <tag>          deploy tag
+#   host-deploy.sh --rollback     redeploy the previously-running tag
+# Invoked on the host by scripts/deploy.sh / scripts/rollback.sh via SSM Run Command.
+set -euo pipefail
+cd "${app_dir}"
+
+CURRENT_FILE=.current_tag
+PREVIOUS_FILE=.previous_tag
+
+if [ "$${1:-}" = "--rollback" ]; then
+  [ -s "$PREVIOUS_FILE" ] || { echo "no previous tag recorded" >&2; exit 1; }
+  TAG="$(cat "$PREVIOUS_FILE")"
+else
+  TAG="$${1:?usage: host-deploy.sh <tag>|--rollback}"
+fi
+
+registry="$(echo "${image_repo}" | cut -d/ -f1)"
+aws ecr get-login-password --region "${region}" | docker login --username AWS --password-stdin "$registry"
+
+./fetch-env.sh
+export IMAGE_TAG="$TAG"
+
+echo "==> pulling ${image_repo}:$TAG"
+docker compose pull api worker
+
+echo "==> starting data services"
+docker compose up -d postgres redis
+
+# Expand/contract rule: migrations must be backward compatible with the image still running,
+# so they run BEFORE the new API starts. See docs/rollback.md.
+echo "==> migrating"
+docker compose run --rm migrate
+
+echo "==> rolling api + worker"
+docker compose up -d --remove-orphans api worker nginx
+
+echo "==> waiting for /readyz"
+for _ in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1/readyz >/dev/null 2>&1; then
+    prev="$(cat "$CURRENT_FILE" 2>/dev/null || true)"
+    if [ -n "$prev" ] && [ "$prev" != "$TAG" ]; then echo "$prev" > "$PREVIOUS_FILE"; fi
+    echo "$TAG" > "$CURRENT_FILE"
+    echo "==> deployed $TAG"
+    exit 0
+  fi
+  sleep 2
+done
+
+echo "!! $TAG failed readiness" >&2
+prev="$(cat "$CURRENT_FILE" 2>/dev/null || true)"
+if [ -n "$prev" ] && [ "$prev" != "$TAG" ]; then
+  echo "==> automatic rollback to $prev" >&2
+  export IMAGE_TAG="$prev"
+  docker compose up -d api worker
+fi
+exit 1

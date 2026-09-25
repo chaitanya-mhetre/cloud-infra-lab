@@ -1,0 +1,82 @@
+# Rendered by Terraform for the low-cost host. IMAGE_TAG is exported by host-deploy.sh.
+name: ${app_name}
+
+x-logging: &logging
+  driver: awslogs
+  options:
+    awslogs-region: ${region}
+    awslogs-group: ${log_group}
+    tag: "{{.Name}}"
+
+x-app: &app
+  image: ${image_repo}:$${IMAGE_TAG}
+  env_file: .env
+  restart: unless-stopped
+  logging: *logging
+  environment:
+    SLOTWISE_ENV: dev
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on: [api]
+    logging: *logging
+
+  api:
+    <<: *app
+    command: ${api_command}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: ${worker_command}
+
+  migrate:
+    <<: *app
+    command: ${migrate_command}
+    restart: "no"
+    profiles: ["jobs"]
+
+  postgres:
+    # Dev-only: Postgres in a container on the same host. Staging/prod-like use RDS (modules/database).
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: slotwise
+      POSTGRES_DB: slotwise
+      # Compose interpolates this from ./.env (written by fetch-env.sh from SSM).
+      POSTGRES_PASSWORD: $${SLOTWISE_POSTGRES_PASSWORD:?set /slotwise/dev/POSTGRES_PASSWORD in SSM}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slotwise"]
+      interval: 5s
+      retries: 20
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    logging: *logging
+
+volumes:
+  pgdata:
+  redisdata:

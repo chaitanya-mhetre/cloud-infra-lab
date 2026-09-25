@@ -1,0 +1,49 @@
+# Rendered by Terraform. Reverse proxy in front of the API container.
+upstream api {
+  server api:8000;
+  keepalive 16;
+}
+
+%{ if domain_name != "" ~}
+server {
+  listen 80;
+  server_name ${domain_name};
+
+  location /.well-known/acme-challenge/ { root /var/www/certbot; }
+  # readiness is probed locally over HTTP by host-deploy.sh
+  location = /readyz { proxy_pass http://api; }
+  location / { return 301 https://$host$request_uri; }
+}
+
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name ${domain_name};
+
+  ssl_certificate     /etc/letsencrypt/live/${domain_name}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${domain_name}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  add_header Strict-Transport-Security "max-age=31536000" always;
+%{ else ~}
+server {
+  # No domain configured: plain HTTP on the Elastic IP. Demo/smoke use only.
+  listen 80 default_server;
+%{ endif ~}
+
+  client_max_body_size 20m;
+
+  # /metrics is for Prometheus inside the host, never the internet.
+  location = /metrics { deny all; }
+
+  location / {
+    proxy_pass http://api;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-ID $request_id;
+    proxy_read_timeout 60s;
+  }
+}

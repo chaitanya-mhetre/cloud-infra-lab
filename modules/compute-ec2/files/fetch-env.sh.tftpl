@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Pull every parameter under ${ssm_path_prefix} into ${app_dir}/.env (mode 600).
+# Parameter NAME suffix becomes the variable name: /slotwise/dev/JWT_SECRET -> SLOTWISE_JWT_SECRET.
+set -euo pipefail
+
+prefix="${ssm_path_prefix}"
+out="${app_dir}/.env"
+tmp="$(mktemp)"
+chmod 600 "$tmp"
+
+aws ssm get-parameters-by-path --region "${region}" --path "$prefix" --recursive --with-decryption \
+  --query 'Parameters[].[Name,Value]' --output json \
+| jq -r '.[] | "\(.[0] | split("/") | last)=\(.[1])"' \
+| while IFS= read -r line; do
+    key="$${line%%=*}"
+    value="$${line#*=}"
+    if [ "$value" = "PLACEHOLDER" ]; then
+      echo "ERROR: $prefix/$key is still PLACEHOLDER; set it with scripts/put-secret.sh" >&2
+      exit 1
+    fi
+    printf 'SLOTWISE_%s=%s\n' "$key" "$value"
+  done > "$tmp"
+
+mv "$tmp" "$out"
+echo "wrote $(wc -l < "$out") variables to $out"
