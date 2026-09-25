@@ -1,0 +1,89 @@
+image:
+  repository: rag-engine
+  tag: ""          # required: git SHA
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Non-secret settings (see rag-engine .env.example). Defaults = offline fake providers.
+config:
+  RAG_STORE: postgres
+  RAG_EMBEDDING_PROVIDER: hashing
+  RAG_EMBEDDING_MODEL: hashing-v1
+  RAG_EMBEDDING_DIM: "384"
+  RAG_LLM_PROVIDER: fake
+  RAG_LLM_MODEL: fake-extractive-v1
+  RAG_RERANKER: lexical
+  RAG_KEYWORD_RETRIEVER: bm25
+  RAG_UPLOAD_DIR: /app/data/uploads
+
+secrets:
+  existingSecret: ""
+  values: {}
+  #  RAG_DATABASE_URL: postgresql+asyncpg://rag:...@postgres:5432/rag
+  #  RAG_REDIS_URL: redis://redis:6379/0
+  #  RAG_JWT_SECRET: ...
+  #  RAG_OPENAI_API_KEY / RAG_GEMINI_API_KEY (only with real providers)
+
+api:
+  replicas: 2
+  command: ["uvicorn", "ragengine.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+  port: 8000
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 768Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 65
+
+worker:
+  replicas: 1
+  command: ["arq", "ragengine.worker.WorkerSettings"]
+  terminationGracePeriodSeconds: 120   # let an ingestion job finish
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }            # parsing + embedding batches are memory-hungry
+
+migrations:
+  enabled: true
+  command: ["alembic", "upgrade", "head"]
+
+# rag-engine stores uploaded files on local disk and the worker reads them, so API and worker
+# pods must share a volume. Needs ReadWriteMany in a multi-node cluster (EFS on EKS);
+# ReadWriteOnce only works when all pods land on one node (kind). Moving uploads to S3 is the real fix.
+uploads:
+  size: 2Gi
+  accessMode: ReadWriteOnce
+  storageClass: ""
+
+service:
+  port: 80
+
+networkPolicy:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: rag.localtest.me
+  tls: []
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"   # streaming (SSE) answers
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

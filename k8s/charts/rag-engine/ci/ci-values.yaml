@@ -1,0 +1,5 @@
+image:
+  tag: ci-0000000
+secrets:
+  values:
+    RAG_JWT_SECRET: ci-only

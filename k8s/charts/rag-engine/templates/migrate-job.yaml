@@ -1,0 +1,28 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "rag.fullname" . }}-migrate
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "rag.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels: {{- include "rag.selector" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "rag.pod" (dict "root" .) | nindent 6 }}
+      containers:
+        - name: migrate
+          command: {{- toYaml .Values.migrations.command | nindent 12 }}
+          {{- include "rag.container" (dict "root" .) | nindent 10 }}
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+{{- end }}

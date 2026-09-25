@@ -1,0 +1,34 @@
+{{- $sel := include "rag.selector" (dict "root" . "component" "worker") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rag.fullname" . }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: {{- $sel | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- $sel | nindent 8 }}
+      annotations:
+        checksum/config: {{ toJson .Values.config | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      {{- include "rag.pod" (dict "root" .) | nindent 6 }}
+      containers:
+        - name: worker
+          command: {{- toYaml .Values.worker.command | nindent 12 }}
+          {{- include "rag.container" (dict "root" .) | nindent 10 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          # arq writes a health-check key to Redis while the worker loop is alive; `arq --check` reads it.
+          livenessProbe:
+            exec:
+              command: ["arq", "--check", "ragengine.worker.WorkerSettings"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3

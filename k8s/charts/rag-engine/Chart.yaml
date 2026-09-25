@@ -1,0 +1,6 @@
+apiVersion: v2
+name: rag-engine
+description: rag-engine — FastAPI retrieval API + arq ingestion worker + migrations
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
