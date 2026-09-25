@@ -3,7 +3,8 @@
 # If an app task's IP changes (it always does on Fargate), rules still hold.
 
 locals {
-  standard = var.mode == "standard"
+  standard   = var.mode == "standard"
+  restricted = var.egress_mode == "restricted"
 }
 
 # ---------------------------------------------------------------------------
@@ -97,15 +98,54 @@ resource "aws_vpc_security_group_ingress_rule" "host_https" {
   cidr_ipv4         = each.value
 }
 
-# Outbound: tasks call AWS APIs, SES, LLM providers, webhooks. Restricting egress
-# to specific hosts needs a proxy/firewall — documented as a known gap in docs/security.md.
+# Outbound HTTPS. Two modes:
+#   open        443 to anywhere (tasks call AWS APIs, SES, LLM providers, webhook targets).
+#   restricted  443 only to (a) the VPC CIDR, where the interface endpoints live (ECR, SSM, Logs),
+#               (b) the S3 gateway endpoint's prefix list, and (c) an explicit CIDR allow-list.
+# Security groups filter by IP, not hostname. Providers behind CDNs change IPs, so hostname
+# allow-listing needs AWS Network Firewall (SNI filtering): see docs/security.md.
 resource "aws_vpc_security_group_egress_rule" "app_https_out" {
+  count = local.restricted ? 0 : 1
+
   security_group_id = aws_security_group.app.id
   description       = "HTTPS to AWS APIs and third parties"
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
   cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_https_vpc" {
+  count = local.restricted ? 1 : 0
+
+  security_group_id = aws_security_group.app.id
+  description       = "HTTPS to interface VPC endpoints"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = var.vpc_cidr
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_https_s3" {
+  count = local.restricted ? 1 : 0
+
+  security_group_id = aws_security_group.app.id
+  description       = "HTTPS to S3 via the gateway endpoint (ECR layers, uploads)"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  prefix_list_id    = var.s3_prefix_list_id
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_https_allowed" {
+  for_each = local.restricted ? toset(var.egress_allowed_cidrs) : toset([])
+
+  security_group_id = aws_security_group.app.id
+  description       = "HTTPS to allow-listed third party"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = each.value
 }
 
 resource "aws_vpc_security_group_egress_rule" "app_http_out" {

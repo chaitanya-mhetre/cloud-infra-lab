@@ -59,3 +59,84 @@ run "rejects_unknown_mode" {
 
   expect_failures = [var.mode]
 }
+
+run "open_egress_is_the_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_vpc_security_group_egress_rule.app_https_out) == 1 && aws_vpc_security_group_egress_rule.app_https_out[0].cidr_ipv4 == "0.0.0.0/0"
+    error_message = "open mode keeps 443 to anywhere"
+  }
+
+  assert {
+    condition     = length(aws_vpc_security_group_egress_rule.app_https_vpc) == 0 && length(aws_vpc_security_group_egress_rule.app_https_s3) == 0
+    error_message = "open mode creates no restricted rules"
+  }
+}
+
+run "restricted_egress_has_no_open_443" {
+  command = plan
+
+  variables {
+    egress_mode          = "restricted"
+    vpc_cidr             = "10.40.0.0/16"
+    s3_prefix_list_id    = "pl-123"
+    egress_allowed_cidrs = ["203.0.113.10/32"]
+  }
+
+  assert {
+    condition     = length(aws_vpc_security_group_egress_rule.app_https_out) == 0
+    error_message = "restricted mode must not allow 443 to 0.0.0.0/0"
+  }
+
+  assert {
+    condition     = aws_vpc_security_group_egress_rule.app_https_vpc[0].cidr_ipv4 == "10.40.0.0/16"
+    error_message = "restricted mode must reach interface endpoints in the VPC"
+  }
+
+  assert {
+    condition     = aws_vpc_security_group_egress_rule.app_https_s3[0].prefix_list_id == "pl-123"
+    error_message = "restricted mode must reach S3 through the gateway endpoint prefix list"
+  }
+
+  assert {
+    condition     = keys(aws_vpc_security_group_egress_rule.app_https_allowed) == ["203.0.113.10/32"]
+    error_message = "allow-listed CIDRs get one rule each"
+  }
+}
+
+run "restricted_egress_rejected_on_lowcost_host" {
+  command = plan
+
+  variables {
+    mode              = "lowcost"
+    egress_mode       = "restricted"
+    vpc_cidr          = "10.40.0.0/16"
+    s3_prefix_list_id = "pl-123"
+  }
+
+  expect_failures = [var.egress_mode]
+}
+
+run "restricted_egress_needs_endpoint_inputs" {
+  command = plan
+
+  variables {
+    egress_mode = "restricted"
+  }
+
+  expect_failures = [var.egress_mode]
+}
+
+run "allow_list_cannot_be_the_whole_internet" {
+  command = plan
+
+  variables {
+    egress_mode          = "restricted"
+    vpc_cidr             = "10.40.0.0/16"
+    s3_prefix_list_id    = "pl-123"
+    egress_allowed_cidrs = ["0.0.0.0/0"]
+  }
+
+  expect_failures = [var.egress_allowed_cidrs]
+}

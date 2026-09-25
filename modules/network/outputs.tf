@@ -32,3 +32,8 @@ output "nat_gateway_enabled" {
   description = "Whether private app subnets have outbound internet."
   value       = var.enable_nat_gateway
 }
+
+output "s3_prefix_list_id" {
+  description = "Prefix list of the S3 gateway endpoint (for restricted SG egress)."
+  value       = aws_vpc_endpoint.s3.prefix_list_id
+}
